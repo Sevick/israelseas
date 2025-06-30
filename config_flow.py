@@ -6,7 +6,8 @@ from homeassistant.const import CONF_NAME
 from homeassistant.core import callback
 import homeassistant.helpers.config_validation as cv
 
-from .const import DOMAIN
+from .const import DOMAIN, CONF_RAD_RESOURCE, CONF_TEMP_RESOURCE, CONF_BEACHES
+from .sensor import ISRAELBEACHES
 
 
 @callback
@@ -28,17 +29,30 @@ class IsrSeasFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         """Init IsrSeasFlowHandler."""
         self._errors = {}
 
+    @staticmethod
+    @callback
+    def async_get_options_flow(config_entry):
+        from .config_flow import IsraelSeasOptionsFlowHandler
+        return IsraelSeasOptionsFlowHandler(config_entry)
+
+
     async def async_step_user(self, user_input=None):
         """Handle a flow initialized by the user."""
         self._errors = {}
 
         if user_input is not None:
             if (
-                f"{user_input.get('CONF_LATITUDE')}-{user_input.get('CONF_LONGITUDE')}"
-                not in configured_instances(self.hass)
+                    f"{user_input.get('CONF_LATITUDE')}-{user_input.get('CONF_LONGITUDE')}"
+                    not in configured_instances(self.hass)
             ):
                 return self.async_create_entry(
-                    title=user_input[CONF_NAME], data=user_input
+                    title=user_input[CONF_NAME],
+                    data={
+                        CONF_NAME: user_input[CONF_NAME],
+                        CONF_RAD_RESOURCE: user_input[CONF_RAD_RESOURCE],
+                        CONF_TEMP_RESOURCE: user_input[CONF_TEMP_RESOURCE],
+                        CONF_BEACHES: user_input["beaches"],
+                    }
                 )
             self._errors[CONF_NAME] = "name_exists"
 
@@ -47,14 +61,17 @@ class IsrSeasFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
     async def _show_config_form(
-        self, name=None, latitude=None, longitude=None, elevation=None
+            self, name=None, latitude=None, longitude=None, elevation=None
     ):
         """Show the configuration form to edit location data."""
         return self.async_show_form(
             step_id="user",
             data_schema=vol.Schema(
                 {
-                    vol.Required(CONF_NAME, default=name): str
+                    vol.Required(CONF_NAME, default=name): str,
+                    vol.Required(CONF_RAD_RESOURCE, default="https://ims.gov.il/sites/default/files/ims_data/xml_files/isr_rad.xml"): str,
+                    vol.Required(CONF_TEMP_RESOURCE, default="https://ims.gov.il/sites/default/files/ims_data/xml_files/isr_sea.xml"): str,
+                    vol.Required("beaches", default=[]): cv.multi_select({b: b for b in ISRAELBEACHES})
                 }
             ),
             errors=self._errors,
@@ -64,4 +81,34 @@ class IsrSeasFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         """Handle a flow initialized by onboarding."""
         return self.async_create_entry(
             title=HOME_LOCATION_NAME, data={CONF_TRACK_HOME: True}
+        )
+
+class IsraelSeasOptionsFlowHandler(config_entries.OptionsFlow):
+    def __init__(self, config_entry):
+        super().__init__()
+        self._entry_id = config_entry.entry_id
+        self._options = config_entry.options
+
+    async def async_step_init(self, user_input=None):
+        if user_input is not None:
+            return self.async_create_entry(title="", data=user_input)
+
+        return self.async_show_form(
+            step_id="init",
+            data_schema=vol.Schema({
+                vol.Required(
+                    CONF_RAD_RESOURCE,
+                    default=self.config_entry.options.get(
+                        CONF_RAD_RESOURCE,
+                        self.config_entry.data.get(CONF_RAD_RESOURCE, "https://ims.gov.il/sites/default/files/ims_data/xml_files/isr_rad.xml")
+                    ),
+                ): str,
+                vol.Required(
+                    CONF_TEMP_RESOURCE,
+                    default=self.config_entry.options.get(
+                        CONF_TEMP_RESOURCE,
+                        self.config_entry.data.get(CONF_TEMP_RESOURCE, "https://ims.gov.il/sites/default/files/ims_data/xml_files/isr_sea.xml")
+                    ),
+                ): str,
+            }),
         )
